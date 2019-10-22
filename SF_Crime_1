@@ -1,0 +1,748 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import random as rand
+import seaborn as sns
+from datetime import datetime
+from datetime import timedelta
+
+
+# open the train dataset and the test dataset
+
+# In[2]:
+
+
+data_train=pd.read_csv(r"C:\Users\jeanm\Anaconda3\envs\test\books\SF_crime\train.csv")
+data_test=pd.read_csv(r"C:\Users\jeanm\Anaconda3\envs\test\books\SF_crime\test.csv")
+print(data_train.shape, data_test.shape)
+print(data_train.columns, data_test.columns)
+data_all = pd.concat([data_train,data_test],axis=0,sort=False)
+#The label column will be set as NULL for test rows
+# FEATURE ENGINEERING HERE
+data_train = data_all[:len(data_train)]
+data_test = data_all[len(data_train):]
+
+
+# In[3]:
+
+
+print(data_all.shape, data_all.columns)
+
+
+# the 2 datasets are huge, lets first print the head of both
+
+# In[4]:
+
+
+data_train.head(10)
+
+
+# In[5]:
+
+
+data_test.head(5)
+
+
+# In[ ]:
+
+
+
+
+
+# explore every columns of the data_all set
+
+# 1. DATES
+
+# In[6]:
+
+
+#we convert the string into a datetime object that can be used
+data_all.Dates=[datetime.strptime(i,'%Y-%m-%d %H:%M:%S') for i in data_all.Dates]
+
+
+# In[7]:
+
+
+print(data_all.Dates.min().year,data_all.Dates.max())
+#it goes from 2003 to May 2015
+
+
+# In[8]:
+
+
+#lets group by the number of crimes per year and month and plot this
+#1. we create a year column, a month column, a day column and a hour column
+data_all['Year']=[i.year for i in data_all.Dates]
+data_all['Month']=[i.month for i in data_all.Dates]
+data_all['Day']=[i.day for i in data_all.Dates]
+data_all['Hour']=[i.hour for i in data_all.Dates]
+
+
+# In[9]:
+
+
+# we groupby Year, Month, Day, Hour in 4 different plots and count the crimes
+x=list(range(2003,2016))
+plt.bar(x,data_all.groupby(by='Year').count().Dates)
+plt.xlabel('year')
+plt.ylabel('#crimes')
+
+
+# we clearly see an influence of the year on the number of crimes, ! year 2015 is not full, this may have an impact on Months evaluation from May 13th 2015
+
+# In[10]:
+
+
+x=list(range(1,13))
+plt.bar(x,data_all.groupby(by='Month').count().Dates)
+plt.xlabel('Month')
+plt.ylabel('#crimes')
+
+
+# we clearly see an influence of the month of the year on the number of crimes (May and October are Max, Vs Dec and August are the smallest
+
+# In[11]:
+
+
+x=list(range(1,32))
+plt.bar(x,data_all.groupby(by='Day').count().Dates)
+plt.xlabel('Day')
+plt.ylabel('#crimes')
+
+
+# as expected there is twice less crimes on the 31st ;), But we can see fluctuations per days that may be better represented by weekdays
+# WHY IS THERE MORE CRIME ON THE 1st???? it needs to be explored
+
+# 2. CATEGORY
+
+# In[12]:
+
+
+x=data_all.Category.unique().shape[0]
+
+print(data_all.groupby(by='Category').count().Dates)
+print(x)
+
+
+# there are 39 categories of crimes classified + 1 empty category
+
+# let's groupby years and see if there is any evolution
+
+# In[13]:
+
+
+data_all_summary=pd.pivot_table(data_all.groupby(by=['Category','Year']).count(),index='Category',columns='Year',values='Dates')
+
+
+# In[14]:
+
+
+x=list(data_all_summary.index.values)
+y=list(data_all_summary[2013]/data_all_summary[2013].sum()*100)
+plt.xticks(rotation='vertical')
+plt.bar(x,y)
+
+
+# 3.DayOfWeek
+# let's see if there is some patterns in the day of week crimes occurence
+
+# In[15]:
+
+
+data_all_DayOfWeek=pd.pivot_table(data_all.groupby(by=['DayOfWeek','Year']).count(),index='DayOfWeek',columns='Year',values='Dates')
+data_all_DayOfWeek_pc=(100*data_all_DayOfWeek/data_all_DayOfWeek.sum())
+#print(data_train_DayOfWeek_pc)
+mean_pc_crime_per_day=100/7
+(data_all_DayOfWeek_pc-mean_pc_crime_per_day)/mean_pc_crime_per_day*100
+
+
+# as expected, there is more crimes on Friday/Saturday, and muchless on Sunday, unexpected is the wednesday higher crime rate
+
+# 4.PdDISTRICT
+# let's explore the worst district of the bay
+
+# In[16]:
+
+
+len(data_all.PdDistrict.unique())
+
+
+# there are 10 districts considered. Do they show some differences in crimes or crimes types or days when the crime is committed?
+
+# In[17]:
+
+
+data_all_PdDistrict=pd.pivot_table(data_all.groupby(by=['PdDistrict','Year']).count(),index='PdDistrict',columns='Year',values='Dates')
+print(data_all_PdDistrict)
+
+
+# SOUTHERN, MISSION and NORTHERN have the highest crime rates, RICHMOND,PARK and TARAVAL have the lowest. And this did not change much throughout the last years
+
+# In[18]:
+
+
+#are there some different crime types in the different districts. patterns?
+data_all_PdDistrict2=pd.pivot_table(data_all.groupby(by=['PdDistrict','Category']).count(),index='Category',columns='PdDistrict',values='Dates')
+data_all_PdDistrict2=(data_all_PdDistrict2/data_all_PdDistrict2.sum()*100).round(1)
+print(data_all_PdDistrict2)
+
+
+# let's create a dataframe of the top 5 crime Categories per district
+
+# In[19]:
+
+
+top_3_crime_index=list(np.arange(3))
+def top3(x):
+    vec=x.sort_values(ascending=False)[0:5]
+    return(pd.Series(vec.index.values))
+
+District= data_all_PdDistrict2.columns
+#print(District[1])
+#print(top3(data_train_PdDistrict2['CENTRAL']))
+P = pd.DataFrame(np.zeros((5, 0)))
+for i in District:
+    a=top3(data_all_PdDistrict2[i])
+    P=pd.concat([P,a],axis=1, join='outer')
+P.columns=District
+top_5_crime_data_district=P
+P
+
+
+# 5. ADDRESS. Let's explore the address info
+
+# In[20]:
+
+
+#how many unique adresses ? => 24777!!
+data_all.Address.unique().shape
+
+
+# In[21]:
+
+
+##### can we split between intersections, avenues, streets, others?  
+print(data_all.Address.head(5))
+data_all['Address_Type']=data_all.Address.str.extract('[A-Z]+ ([A-Z][A-Z]$)', expand=False)
+print(data_all.Address_Type.head(5))
+
+
+# In[22]:
+
+
+np=data_all.groupby(by='Address_Type').count().Dates.sort_values(ascending=False)
+np2=np/np.sum()*100
+print(np2)
+
+
+# 75% of addresses are Streets, 19% are Avenues, 2.2% are Boulevards, and the rest is neglibible
+
+# In[23]:
+
+
+data_all.columns
+
+
+# In[24]:
+
+
+data_all['Intersection']=data_all.Address.str.extract('(/)', expand=False)
+data_all.Intersection=data_all.Intersection.fillna('0')
+data_all.Intersection=data_all.Intersection.replace('/','1')
+
+
+# In[25]:
+
+
+np=data_all.groupby(by='Intersection').count().Dates
+np2=np/np.sum()*100
+print(np2)
+
+
+# 70% of addresses are intersections, 30% are not
+
+# 6. GPS info: let's explore their usage
+
+# In[26]:
+
+
+#first, find the min and max X and Y of the train data set
+X_max_all=data_all.X.max()
+X_min_all=data_all.X.min()
+Y_max_all=data_all.Y.max()
+Y_min_all=data_all.Y.min()
+
+
+# In[27]:
+
+
+print(X_min_all, X_max_all,Y_min_all, Y_max_all)
+
+
+# In[28]:
+
+
+#one idea would be to get the geographical delimitations of each of the 10 District to create
+#some split features from it and so aggregate the geographical data
+#let's try with one district
+def min_max_district(district_name):
+    A=data_all[data_all.PdDistrict==district_name]
+    X_min_district=A.X.min()
+    X_max_district=A.X.max()
+    Y_min_district=A.Y.min()
+    Y_max_district=A.Y.max()
+    vec_geo=[X_min_district,X_max_district,Y_min_district,Y_max_district]
+    return(vec_geo)
+
+
+# In[29]:
+
+
+min_max_district('BAYVIEW')
+
+
+# In[30]:
+
+
+#we always get same max values???? there may be an issue with one GPS data unproperly filled out...
+#let's check the occurences of X_max=-120.5 and Y_max=90
+
+
+# In[31]:
+
+
+data_all[data_all.X==-120.5].shape
+
+
+# In[32]:
+
+
+data_all[data_all.Y==90].shape
+
+
+# In[33]:
+
+
+#there are 143 points that are written (X=-120.5,Y=90)
+A=data_all[data_all.X==-120.5].head()
+#print(A)
+#they were registered in the eary years
+#we decide to replace these 143 values by the central point of the district for each of them, the good news is that when X==-120.5, Y==90
+
+
+# In[34]:
+
+
+data_all_2=data_all[data_all.X!=-120.5]
+print(data_all_2.shape)
+#we then create a function that calculates the central point for each district
+def mean_district(district_name):
+    A=data_all_2[data_all_2.PdDistrict==district_name]
+    X_mean_district=A.X.mean()
+    Y_mean_district=A.Y.mean()
+    vec_geo_mean=[X_mean_district,Y_mean_district]
+    return(vec_geo_mean)
+
+
+# In[35]:
+
+
+#let's run the mean district function
+print('NORTHERN', mean_district('NORTHERN'))
+print('TENDERLOIN', mean_district('TENDERLOIN'))
+print('BAYVIEW', mean_district('BAYVIEW'))
+
+
+# In[36]:
+
+
+def min_max_district_2(district_name):
+    A=data_all_2[data_all_2.PdDistrict==district_name]
+    X_min_district=A.X.min()
+    X_max_district=A.X.max()
+    Y_min_district=A.Y.min()
+    Y_max_district=A.Y.max()
+    vec_geo=[X_min_district,X_max_district,Y_min_district,Y_max_district]
+    return(vec_geo)
+
+
+# In[39]:
+
+
+import numpy as np
+#let's build a matrix from it that will be usefull for next geographical features step
+list_district=data_all_2.PdDistrict.unique()
+District_geo=np.empty([6])
+for a in list_district:
+    vec_geo_tot=min_max_district_2(a)+mean_district(a)
+    District_geo=np.vstack((District_geo,vec_geo_tot))
+District_geo_pd=pd.DataFrame(District_geo[1:(len(list_district)+1)],index=list_district,columns=['X_min','X_max','Y_min','Y_max','X_mean','Y_mean'])
+print(District_geo_pd)
+mean_X=District_geo_pd.X_mean.mean()
+mean_Y=District_geo_pd.Y_mean.mean()
+
+
+# In[40]:
+
+
+#we can then clean the data_all database by replacing creating a new column for X and Y named X_clean and Y_clean
+#where the -120.5 and 90 values have been respectively replaced by mean values of the given district
+
+data_all['X_clean']=np.where(data_all['X']==-120.5,mean_X,data_all['X'])
+data_all['Y_clean']=np.where(data_all['X']==-120.5,mean_Y,data_all['Y'])
+
+
+# In[41]:
+
+
+print(data_all['X_clean'].max())
+print(data_all['Y_clean'].max())
+#print(data_all[data_all['X']==-120.5].head(10))
+
+
+# In[111]:
+
+
+#there is lot of overlap between District geographical data
+#one other possibility would be to divide the total bay into N squares and attribute a square number based on the XY position
+#of each crime
+
+#let's make the split.first the extremes latitude and longitude
+X_min=District_geo_pd.X_min.min()
+X_max=District_geo_pd.X_max.max()
+delta_X=X_max-X_min
+Y_min=District_geo_pd.Y_min.min()
+Y_max=District_geo_pd.Y_max.max()
+delta_Y=Y_max-Y_min
+#print(delta_X,delta_Y)
+
+#define N the number of X and Y divisions and create the division vectors
+N=50
+X_div_1=np.linspace(X_min,X_max,N+1)
+X_div_number_1=np.arange(1,N+1,1)
+Y_div_1=np.linspace(Y_min,Y_max,N+1)
+Y_div_number_1=np.arange(1,N+1,1)
+print(X_div_number_1)
+
+M=10
+X_div_2=np.linspace(X_min,X_max,M+1)
+X_div_number_2=np.arange(1,M+1,1)
+Y_div_2=np.linspace(Y_min,Y_max,M+1)
+Y_div_number_2=np.arange(1,M+1,1)
+print(X_div_number_2)
+
+
+# In[112]:
+
+
+#let's define the function to give a X number when X is given
+def X_number_1(a):
+    i=0
+    for i in range(1,N+1):
+        if a>X_div_1[i]:
+            i+=1
+        else:
+            return(i)
+        
+def X_number_2(a):
+    i=0
+    for i in range(1,M+1):
+        if a>X_div_2[i]:
+            i+=1
+        else:
+            return(i)
+        
+X_number_1(District_geo_pd.iloc[2,0])
+
+
+# In[113]:
+
+
+#let's define the equivalent function to give a Y number when Y is given
+def Y_number_1(a):
+    i=0
+    for i in range(1,N+1):
+        if a>Y_div_1[i]:
+            i+=1
+        else:
+            return(i)
+
+def Y_number_2(a):
+    i=0
+    for i in range(1,M+1):
+        if a>Y_div_2[i]:
+            i+=1
+        else:
+            return(i)        
+
+Y_number_1(District_geo_pd.iloc[9,3])
+
+
+# In[114]:
+
+
+#let's apply these functions to data_train to create 2 new columns "X_number" and "Y_number"
+data_all['X_number_1']=[X_number_1(i) for i in data_all.X_clean]
+data_all['Y_number_1']=[Y_number_1(i) for i in data_all.Y_clean]
+data_all['X_number_2']=[X_number_2(i) for i in data_all.X_clean]
+data_all['Y_number_2']=[Y_number_2(i) for i in data_all.Y_clean]
+
+
+# In[115]:
+
+
+data_all.isnull().sum()
+
+
+# In[116]:
+
+
+#let's now create a unique number for each of the NxN zones
+data_all['Zone_1']=data_all['X_number_1']*data_all['Y_number_1']
+print(data_all[['X_number_1','Y_number_1','Zone_1']].min())
+data_all['Zone_2']=data_all['X_number_2']*data_all['Y_number_2']
+print(data_all[['X_number_2','Y_number_2','Zone_2']].min())
+
+
+# In[48]:
+
+
+#we fill the missing address type with ST which is the most common
+data_all.Address_Type=data_all.Address_Type.fillna('ST')
+data_all.isnull().sum()
+
+
+# the database is clean to start trying to fit some classifier using the appropriate inputs:
+# the inputs selected are first: 
+# - DayOfWeek (category),
+# - PdDistrict (category),
+# - Year (integer),
+# - Month (integer),
+# - Day (integer),
+# - Hour (integer),
+# - Address_type (category),
+# - Intersection (category),
+# - Zone (category)
+
+# In[49]:
+
+
+#We import the appropriate packages
+from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import roc_curve
+from sklearn.metrics import auc
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.metrics import confusion_matrix
+from sklearn import linear_model
+
+SEED=222
+
+
+# In[50]:
+
+
+#is there a way to make almost good estimation by replacing category by an integer vector and avoid dummies for : Category, DayOfWeek, PdDistrict ?
+data_all.Category=pd.Categorical(data_all.Category)
+data_all["Category_label"]=data_all.Category.cat.codes
+data_all.DayOfWeek=pd.Categorical(data_all.DayOfWeek)
+data_all["DayOfWeek_label"]=data_all.DayOfWeek.cat.codes
+data_all.PdDistrict=pd.Categorical(data_all.PdDistrict)
+data_all["PdDistrict_label"]=data_all.PdDistrict.cat.codes
+data_all.Address_Type=pd.Categorical(data_all.Address_Type)
+data_all["Address_Type_label"]=data_all.Address_Type.cat.codes
+
+
+# In[117]:
+
+
+#we create new features
+#third feature: night time (from 5pm to 5am)
+data_all['Night']=np.empty(data_all.shape[0])
+data_all.loc[data_all['Hour'].values>=16,'Night']=1
+data_all.loc[data_all['Hour'].values<=6,'Night']=1
+
+#Fourth feature: rush crime days friday and saturday and wednesday
+data_all['rush_crime']=np.empty(data_all.shape[0])
+data_all.loc[(data_all['DayOfWeek'].values=='Friday'),'rush_crime']=1
+data_all.loc[(data_all['DayOfWeek'].values=='Saturday'),'rush_crime']=1
+data_all.loc[(data_all['DayOfWeek'].values=='Wednesday'),'rush_crime']=1
+
+#Fifth feature: block in Address
+data_all['Block']=data_all.Address.str.contains('Block').astype(int)
+
+
+# In[118]:
+
+
+#let's select back the train data set
+#first we select the right columns and store in a data_all_useful dataset
+data_all_usefull=data_all[['DayOfWeek_label','PdDistrict_label','Year','Month','Day','Hour','Address_Type_label','Intersection','Zone_1','Zone_2','Category_label','X_number_1','Y_number_1','X_number_2','Y_number_2','Night','rush_crime','Block','Id']]
+
+
+# In[119]:
+
+
+# we add more features that count the occurence of the categorical variables (to differentiate rare and frequent features)
+#in both test and train datasets
+for i in data_all_usefull.columns:
+    counts = data_all_usefull.loc[:,i].value_counts().to_dict()
+    data_all_usefull[''+i+'_counts'] = data_all_usefull.loc[:,i].map(counts)
+
+
+# In[120]:
+
+
+print(data_all_usefull.columns)
+print(data_all_usefull.shape)
+
+
+# In[121]:
+
+
+#we can then select the train data only
+data_train_prepared = data_all_usefull[:len(data_train)]
+print(data_train_prepared.shape)
+print(data_train_prepared.isnull().sum())
+
+
+# In[122]:
+
+
+#dataframe si much too big, we should start exploring algo with a subset of it: example - 1 year, 1% of data
+percent_subset=100
+selection_array=np.linspace(0, data_train_prepared.shape[0],data_train_prepared.shape[0]*percent_subset//100, dtype='int')
+data_train_select=data_train_prepared[data_train_prepared.index.isin(selection_array)]
+data_train_select.shape
+
+
+# In[123]:
+
+
+#then we can try our first rain forest algo after scaling and splitting
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+train_good=data_train_select
+X=train_good.drop(['Category_label','Category_label_counts','Id','Id_counts'],axis=1)
+scaler = MinMaxScaler()
+X_scale=scaler.fit_transform(X.values)
+#print(X.columns)
+print(X_scale.shape)
+Y=train_good['Category_label']
+print(Y.shape)
+X_train,X_test,y_train,y_test=train_test_split(X_scale,Y,test_size=0.4,random_state=2019)
+print(X_train.shape, X_test.shape,y_train.shape,y_test.shape)
+
+
+# In[82]:
+
+
+#estimators exploration
+estimat = np.linspace(200, 200, 1, endpoint=True)
+print(estimat)
+train_results = []
+test_results = []
+for estim in estimat:
+    estim=int(estim)
+    rf_opt = RandomForestClassifier(max_depth=17,n_estimators=estim, max_features=5, random_state=SEED)
+    n=rf_opt
+    n.fit(X_train, y_train)
+    train_pred = n.predict(X_train)
+    #print(y_train.head())
+    #print(train_pred)
+    score_train=accuracy_score(train_pred,y_train)
+    train_results.append(score_train)
+    y_pred = n.predict(X_test)
+    score_y=accuracy_score(y_pred,y_test)
+    test_results.append(score_y)
+
+
+# In[83]:
+
+
+from matplotlib.legend_handler import HandlerLine2D
+line1, = plt.plot(estimat, train_results, 'b', label="Train AUC")
+line2, = plt.plot(estimat, test_results, 'r', label="Test AUC")
+plt.legend(handler_map={line1: HandlerLine2D(numpoints=2)})
+plt.ylabel('accuracy score')
+plt.xlabel('number of estimators')
+plt.show
+
+print(test_results)
+
+
+# In[84]:
+
+
+print(pd.DataFrame(y_pred).loc[:,0].unique())
+#print(data_train.head(3))
+#print(data_train_prepared.Category_label[0:3])
+
+
+# In[124]:
+
+
+#let's build the prediction response file
+#structure is : first column= Id, other columns are crime categories with 0 or 1 in each
+#print(data_all_usefull.shape)
+data_test=data_all_usefull[data_all_usefull.Id.isnull()==False]
+data_test_good=data_test.drop(['Category_label','Category_label_counts','Id','Id_counts'],axis=1)
+
+#empty response file
+category_labels_results=data_all_PdDistrict2.index
+columns_names=np.append('Id',category_labels_results)
+
+data_test_good_scale=scaler.fit_transform(data_test_good.values)
+result_prediction=n.predict(data_test_good_scale)
+
+
+#print(pd.DataFrame(result_prediction).loc[:,0].unique())
+result_all = pd.DataFrame(np.zeros((data_test_good.shape[0], len(category_labels_results)+1)))
+
+i=0
+while i <data_test_good.shape[0]:
+    result_all.iloc[i,result_prediction[i]+1]=1
+    result_all.iloc[i,result_prediction[i]+1].astype('Int32')
+    i+=1
+
+result_all.columns=columns_names    
+result_all['Id']=data_test['Id'].astype('Int32')
+
+result_all.iloc[:,0:].to_csv(r"C:\Users\jeanm\Anaconda3\envs\test\books\SF_crime\submissionJM1.csv",index=False)
+
+
+# In[125]:
+
+
+#let's try to do it with multiclass logistic regression
+from sklearn.linear_model import LogisticRegression
+clf = LogisticRegression(random_state=0, solver='lbfgs',multi_class='multinomial').fit(X_train, y_train)
+print(clf.score(X_train, y_train))
+
+data_test_good_scale=scaler.fit_transform(data_test_good.values)
+result_prediction=clf.predict_proba(data_test_good_scale)
+print(result_prediction.shape)
+
+result_all_2 = pd.DataFrame(np.column_stack((np.zeros(data_test_good.shape[0]),result_prediction)))
+print(result_all_2.shape)
+
+result_all_2.columns=columns_names    
+result_all_2['Id']=data_test['Id'].astype('Int32')
+
+result_all_2.to_csv(r"C:\Users\jeanm\Anaconda3\envs\test\books\SF_crime\submissionJM2.csv",index=False)
+
+
+# This method works best and is submitted to score 2.5145 in the competition
+
+# In[ ]:
+
+
+
+
